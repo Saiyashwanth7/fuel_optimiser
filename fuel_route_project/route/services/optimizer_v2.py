@@ -28,6 +28,7 @@ PROXIMITY_MILES: float = getattr(settings, "STATION_ROUTE_PROXIMITY_MILES", 5)
 # Geometry helpers
 # --------------------------------------------------------------------------- #
 
+
 def haversine(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     """Scalar haversine — used only for cum_dist precomputation."""
     R = 3958.8
@@ -40,6 +41,9 @@ def haversine(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
         * math.sin(dlon / 2) ** 2
     )
     return R * 2 * math.asin(math.sqrt(min(a, 1.0)))
+
+
+# Using Vectorized haversine to calculate distance between the current point and polyline coorindates using numpy. This makes the greedy approach easier.
 
 
 def haversine_vectorized(
@@ -55,7 +59,7 @@ def haversine_vectorized(
     NumPy operates on the full array in C — no Python loop over points.
     This replaces the inner `for i, point in enumerate(polyline)` loop.
     """
-    R = 3958.8
+    R = 3958.8  # earth radius in miles
     dlat = np.radians(poly_lats - slat)
     dlon = np.radians(poly_lons - slon)
     a = (
@@ -70,6 +74,7 @@ def haversine_vectorized(
 # --------------------------------------------------------------------------- #
 # Proximity filter — vectorized + downsampled
 # --------------------------------------------------------------------------- #
+
 
 def filter_stations_near_route(
     stations,
@@ -111,15 +116,16 @@ def filter_stations_near_route(
     cum_dist = np.zeros(n)
     for i in range(1, n):
         cum_dist[i] = cum_dist[i - 1] + haversine(
-            full_lats[i - 1], full_lons[i - 1],
-            full_lats[i],     full_lons[i]
+            full_lats[i - 1], full_lons[i - 1], full_lats[i], full_lons[i]
         )
     # cum_dist[-1] == total route miles (matches route["distance_miles"])
 
+    # step 1 of filtering
     # ---- Downsampled polyline for fast proximity check ----
     # Keep every K-th point so spacing ≈ threshold_miles / 2
     avg_spacing_miles = cum_dist[-1] / n if n > 1 else 0.02
     K = max(1, int((threshold_miles / 2) / avg_spacing_miles))
+
     sample_idx = np.arange(0, n, K)
     # Always include the last point so we don't miss stations near the end
     if sample_idx[-1] != n - 1:
@@ -134,34 +140,39 @@ def filter_stations_near_route(
         f"Threshold: {threshold_miles} mi."
     )
 
+    # Step 2: The nearby-filtering
     nearby = []
     for station in stations:
         slat, slon = station.lat, station.lon
 
         # Step A: fast check against downsampled points (vectorized, no Python loop)
         dists_sampled = haversine_vectorized(slat, slon, sample_lats, sample_lons)
+        # check if the closest sample is still far away from the padding
+        # if the minimum distance is 7 and the padding is 9, then we don't need to consider the station
         if dists_sampled.min() > threshold_miles + avg_spacing_miles * K:
             # Station is definitely too far — skip without touching full polyline
             continue
 
         # Step B: exact check against full polyline (also vectorized)
-        # Only reached by stations that passed the coarse filter (~10-20% of candidates)
+        # Only reached by stations that passed the coarse filter (~10-20% of stations)
         dists_full = haversine_vectorized(slat, slon, full_lats, full_lons)
         best_idx = int(np.argmin(dists_full))
         best_dist = dists_full[best_idx]
 
         if best_dist <= threshold_miles:
-            nearby.append({
-                "opis_id": station.opis_id,
-                "name": station.name,
-                "city": station.city,
-                "state": station.state,
-                "lat": slat,
-                "lon": slon,
-                "avg_price": station.avg_price,
-                # O(1) lookup into prefix-sum array — this is the payoff of cum_dist
-                "dist_from_start": float(cum_dist[best_idx]),
-            })
+            nearby.append(
+                {
+                    "opis_id": station.opis_id,
+                    "name": station.name,
+                    "city": station.city,
+                    "state": station.state,
+                    "lat": slat,
+                    "lon": slon,
+                    "avg_price": station.avg_price,
+                    # O(1) lookup into prefix-sum array, this is the payoff of cum_dist
+                    "dist_from_start": float(cum_dist[best_idx]),
+                }
+            )
 
     logger.info(
         f"Proximity filter: {len(nearby)} stations within {threshold_miles} mi "
@@ -173,6 +184,7 @@ def filter_stations_near_route(
 # --------------------------------------------------------------------------- #
 # Greedy optimizer (unchanged)
 # --------------------------------------------------------------------------- #
+
 
 def greedy_fuel_optimizer(
     stations_on_route: list[dict],
@@ -202,7 +214,8 @@ def greedy_fuel_optimizer(
             break
 
         reachable = [
-            s for s in stations
+            s
+            for s in stations
             if current_pos < s["dist_from_start"] <= current_pos + tank_range
         ]
 
@@ -224,7 +237,9 @@ def greedy_fuel_optimizer(
 
         if not viable:
             viable = reachable
-            logger.warning(f"No viable station at pos {current_pos:.1f} — using fallback.")
+            logger.warning(
+                f"No viable station at pos {current_pos:.1f} — using fallback."
+            )
 
         best = min(viable, key=lambda s: s["avg_price"])
         leg_miles = best["dist_from_start"] - current_pos
@@ -232,12 +247,14 @@ def greedy_fuel_optimizer(
         cost = gallons * best["avg_price"]
         total_cost += cost
 
-        fuel_stops.append({
-            **best,
-            "leg_miles": round(leg_miles, 1),
-            "gallons_needed": round(gallons, 2),
-            "leg_cost_usd": round(cost, 2),
-        })
+        fuel_stops.append(
+            {
+                **best,
+                "leg_miles": round(leg_miles, 1),
+                "gallons_needed": round(gallons, 2),
+                "leg_cost_usd": round(cost, 2),
+            }
+        )
         current_pos = best["dist_from_start"]
 
     # Final leg cost (last stop → destination, using last stop's price)
