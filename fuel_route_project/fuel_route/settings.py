@@ -2,12 +2,16 @@ import os
 from pathlib import Path
 from dotenv import load_dotenv
 
-load_dotenv()
-
 BASE_DIR = Path(__file__).resolve().parent.parent
+load_dotenv(BASE_DIR.parent / '.env')
+
 SECRET_KEY = os.getenv('DJANGO_SECRET_KEY', 'dev-secret')
 DEBUG = True
 ALLOWED_HOSTS = ['*']
+
+# External API Keys
+ORS_API_KEY = os.getenv('ORS_API_KEY', '')
+GEOCODIO_API_KEY = os.getenv('GEOCODIO_API_KEY', '')
 
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -32,7 +36,21 @@ MIDDLEWARE = [
 
 ROOT_URLCONF = 'fuel_route.urls'
 
-TEMPLATES = []
+TEMPLATES = [
+    {
+        'BACKEND': 'django.template.backends.django.DjangoTemplates',
+        'DIRS': [],
+        'APP_DIRS': True,
+        'OPTIONS': {
+            'context_processors': [
+                'django.template.context_processors.debug',
+                'django.template.context_processors.request',
+                'django.contrib.auth.context_processors.auth',
+                'django.contrib.messages.context_processors.messages',
+            ],
+        },
+    },
+]
 
 WSGI_APPLICATION = 'fuel_route.wsgi.application'
 

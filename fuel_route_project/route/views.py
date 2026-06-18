@@ -4,7 +4,7 @@ route/views.py
 Single endpoint: GET /api/route/?start=<location>&finish=<location>
 
 Flow (one request):
-  1. Geocode start + finish via Nominatim (2 calls, cached after first use)
+  1. Geocode start + finish via Geocodio (2 calls, cached after first use)
   2. Fetch route polyline from ORS (1 API call)
   3. Bounding-box DB query to narrow ~6700 stations to ~200-500
   4. Proximity filter to stations within 5 miles of polyline (in-memory)
