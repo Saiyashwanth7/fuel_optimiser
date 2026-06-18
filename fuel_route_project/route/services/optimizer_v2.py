@@ -193,55 +193,109 @@ def greedy_fuel_optimizer(
     mpg: float = MPG,
 ) -> dict:
     """
-    Greedy cheapest-fuel stop selector.
+    Greedy cheapest-fuel algorithm.
 
-    Sorts stations by dist_from_start, then at each position picks the
-    cheapest station reachable within tank_range that still allows
-    continuing to the next stop or destination.
+    Args:
+        stations_on_route: output of filter_stations_near_route()
+        total_route_miles: total trip distance
+        tank_range:        max miles per full tank (default 500)
+        mpg:               fuel efficiency (default 10)
+
+    Returns:
+        {
+            "fuel_stops": [
+                {
+                    "name", "city", "state", "lat", "lon",
+                    "avg_price",
+                    "dist_from_start",   # miles from trip start
+                    "leg_miles",         # miles driven to reach this stop
+                    "gallons_needed",    # fuel purchased at this stop
+                    "leg_cost_usd",      # cost of this leg
+                }
+            ],
+            "total_cost_usd": float,
+        }
+
+    Raises:
+        ValueError — if no station is reachable and destination is too far
     """
+    # Edge case: trip fits in one tank
     if total_route_miles <= tank_range:
         return {"fuel_stops": [], "total_cost_usd": 0.0}
 
+    # first, sort the stations based on the distance from the start (we use cum_dist list in the above function, that is being used here) from the station dict
     stations = sorted(stations_on_route, key=lambda s: s["dist_from_start"])
 
+    # establish the starting position. The tank range and mpg are hardcoded as 500, 10 respectively
     current_pos = 0.0
     fuel_stops = []
     total_cost = 0.0
 
+    # starting the trip, we try to check the remaining mile and break the while loop if we can reach the destination.
     while True:
+        # remaining from the current point.
         remaining = total_route_miles - current_pos
+
+        if remaining <= 0:
+            break
+
+        # we check if can we reach the destination from here?
         if remaining <= tank_range:
             break
 
+        # create a list of stations reachable from current position (strictly ahead) (sorted with dist_from_start)
+
+        # REACHABLE STATION: A station is said to be reachable if we can drive to it from the current position without running out of fuel
+
+        # here, we are going to derive a list of coordinates we can reach using the current fuel.
+        # we are using the current truck mileage based on the current fuel and mpg
         reachable = [
             s
             for s in stations
             if current_pos < s["dist_from_start"] <= current_pos + tank_range
         ]
 
-        if not reachable:
+        if (
+            not reachable
+        ):  # if there are no coordinates in the DB which matches the required 500 mile range, then we raise a valueError.
             raise ValueError(
                 f"No fuel station found within {tank_range:.0f} miles of "
                 f"mile marker {current_pos:.1f}. "
-                "This route segment may pass through a very remote area."
+                f"This route segment may pass through a very remote area."
             )
+
+        # Filter to "viable" stations those from the reachable stations.
+        # VIABLE STATION: viables are the stations from which we can either reach destination, or reach another station.
 
         viable = []
         for s in reachable:
-            d = s["dist_from_start"]
-            if total_route_miles - d <= tank_range:
+            dist_after = s["dist_from_start"]
+
+            # checking if can we reach the destination direclty from this station
+            if total_route_miles - dist_after <= tank_range:
                 viable.append(s)
                 continue
-            if any(d < x["dist_from_start"] <= d + tank_range for x in stations):
+
+            # checking if can we reach any further station from here?
+            can_continue = any(
+                dist_after < x["dist_from_start"] <= dist_after + tank_range
+                for x in stations
+            )
+            if can_continue:
                 viable.append(s)
 
         if not viable:
+            # Should not happen on a well-connected road network. But we are going to provide a check for this for any rare edge cases.
             viable = reachable
             logger.warning(
-                f"No viable station at pos {current_pos:.1f} — using fallback."
+                f"No viable station from pos {current_pos:.1f} — "
+                f"falling back to cheapest reachable."
             )
 
+        # attain the cheapest viable station with the minimum avg_price
+        # as the distance is already handled by the reacheable list (which is sorted based on disctance), we can directly choose the minimum avg price from the viable stations
         best = min(viable, key=lambda s: s["avg_price"])
+
         leg_miles = best["dist_from_start"] - current_pos
         gallons = leg_miles / mpg
         cost = gallons * best["avg_price"]
@@ -255,13 +309,30 @@ def greedy_fuel_optimizer(
                 "leg_cost_usd": round(cost, 2),
             }
         )
+        # update the current_pos.
         current_pos = best["dist_from_start"]
 
-    # Final leg cost (last stop → destination, using last stop's price)
+    # the while loop ends on the last but one station, we have to handle the last stop.
+    # Final leg: last stop (or origin if no stops) → destination
     if fuel_stops:
-        final_leg = total_route_miles - fuel_stops[-1]["dist_from_start"]
-        final_cost = (final_leg / mpg) * fuel_stops[-1]["avg_price"]
-        total_cost += final_cost
+        last_stop_pos = fuel_stops[-1]["dist_from_start"]
+        last_price = fuel_stops[-1]["avg_price"]
+    else:
+        # Trip < tank_range — already handled above, but just in case
+        last_stop_pos = 0.0
+        last_price = (
+            min(stations_on_route, key=lambda s: s["avg_price"])["avg_price"]
+            if stations_on_route
+            else 0.0
+        )
+
+    # Final result calculation needs the differnce between the last station ["dist_from_start"] and the total_distance.
+    final_leg = total_route_miles - last_stop_pos
+    final_gallons = final_leg / mpg
+    final_cost = final_gallons * last_price
+    total_cost += final_cost
+
+    if fuel_stops:
         fuel_stops[-1]["final_leg_miles"] = round(final_leg, 1)
         fuel_stops[-1]["final_leg_cost_usd"] = round(final_cost, 2)
 

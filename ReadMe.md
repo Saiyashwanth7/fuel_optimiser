@@ -124,3 +124,7 @@ route/
 Some city/state pairs in the dataset, mostly a handful of Canadian towns mixed into the US data, couldn't be geocoded successfully. These are excluded from the station database. It's a tiny fraction of the total dataset and doesn't meaningfully affect coverage on US routes.
 
 Multiple price entries exist for the same station ID in the raw CSV with no timestamps to tell which is most recent, so I averaged them. This felt like the more honest choice than arbitrarily picking one.
+
+## Video Explanation:
+
+loom video: https://www.loom.com/share/78f49079767d46e8a38017e9266b04dd
