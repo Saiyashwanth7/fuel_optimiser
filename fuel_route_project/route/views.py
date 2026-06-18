@@ -4,7 +4,7 @@ route/views.py
 Single endpoint: GET /api/route/?start=<location>&finish=<location>
 
 Flow (one request):
-  1. Geocode start + finish via Geocodio (2 calls, cached after first use)
+  1. Resolve start + finish via in-memory cache → DB lookup → geocoding
   2. Fetch route polyline from ORS (1 API call)
   3. Bounding-box DB query to narrow ~6700 stations to ~200-500
   4. Proximity filter to stations within 5 miles of polyline (in-memory)
@@ -12,6 +12,7 @@ Flow (one request):
   6. Return JSON with stops, costs, and GeoJSON geometry
 """
 
+# new-views
 import logging
 
 from rest_framework import status
@@ -20,10 +21,79 @@ from rest_framework.views import APIView
 
 from .models import FuelStation
 from .services.geocoding import geocode_address
-from .services.optimizer import filter_stations_near_route, greedy_fuel_optimizer
+from .services.optimizer_v2 import filter_stations_near_route, greedy_fuel_optimizer
 from .services.routing import get_route
 
 logger = logging.getLogger(__name__)
+
+# In-memory cache for geocoded locations (process-wide)
+_geocode_cache: dict[str, tuple[float, float]] = {}
+
+
+def parse_city_state(location: str) -> tuple[str, str] | None:
+    """
+    Parse "City, State" format.
+    Returns (city, state) or None if invalid.
+    """
+    parts = [part.strip() for part in location.split(",")]
+    if len(parts) != 2:
+        return None
+
+    city, state = parts[0], parts[1].upper()
+    if len(city) == 0 or len(state) == 0:
+        return None
+
+    return city, state
+
+
+def resolve_location_coords(location: str) -> tuple[float, float] | None:
+    """
+    Resolve location coordinates with priority:
+      1. In-memory cache (by exact location string)
+      2. DB fuel stations (by city, state)
+      3. Geocoding API (Nominatim)
+    
+    Caches results in memory for future requests in this process.
+    """
+    location_key = location.strip().lower()
+
+    # 1. Check in-memory cache
+    if location_key in _geocode_cache:
+        logger.info(f"Cache hit for '{location}'")
+        return _geocode_cache[location_key]
+
+    coords = None
+
+    # 2. Try DB lookup by city, state
+    parsed = parse_city_state(location)
+    if parsed:
+        city, state = parsed
+        station = FuelStation.objects.filter(
+            city__iexact=city,
+            state__iexact=state,
+        ).order_by("avg_price").first()
+        
+        if station:
+            coords = (station.lat, station.lon)
+            logger.info(
+                f"Resolved '{location}' from DB station: "
+                f"({coords[0]}, {coords[1]})"
+            )
+
+    # 3. Fall back to geocoding API
+    if coords is None:
+        coords = geocode_address(location)
+        if coords:
+            logger.info(
+                f"Geocoded '{location}' via API: ({coords[0]}, {coords[1]})"
+            )
+
+    # 4. Cache in memory if found
+    if coords:
+        _geocode_cache[location_key] = coords
+        return coords
+
+    return None
 
 
 class RouteView(APIView):
@@ -61,26 +131,26 @@ class RouteView(APIView):
             )
 
         # ------------------------------------------------------------------ #
-        # 1. Geocode start and finish
+        # 1. Resolve start and finish coordinates
         # ------------------------------------------------------------------ #
-        start_coords = geocode_address(start)
+        start_coords = resolve_location_coords(start)
         if not start_coords:
             return Response(
                 {
                     "error": (
-                        f"Could not geocode start location: '{start}'. "
+                        f"Could not resolve start location: '{start}'. "
                         "Please use a format like 'Chicago, IL' or 'Dallas, TX'."
                     )
                 },
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        finish_coords = geocode_address(finish)
+        finish_coords = resolve_location_coords(finish)
         if not finish_coords:
             return Response(
                 {
                     "error": (
-                        f"Could not geocode finish location: '{finish}'. "
+                        f"Could not resolve finish location: '{finish}'. "
                         "Please use a format like 'Chicago, IL' or 'Dallas, TX'."
                     )
                 },

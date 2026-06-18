@@ -71,3 +71,25 @@ def get_route(
         "geometry": coords,
         "distance_miles": dist_miles,
     }
+    
+
+# I have noticed that the current algorithm is working well, but the fuel stop are higher than expected.
+# so we can use a stop penalty to limit the fuel stops. This can minimize the cost even more, but I need to look into it's edges cases
+# that's why I'm keeping this as a part of future enhcancements
+""" STOP_PENALTY = getattr(settings, "STOP_PENALTY_USD", 10)
+
+
+
+def stop_score(s, current_pos, mpg):
+
+    leg_miles = s["dist_from_start"] - current_pos
+
+    fuel_cost = (leg_miles / mpg) * s["avg_price"]
+
+    return fuel_cost + STOP_PENALTY
+
+
+
+best = min(viable, key=lambda s: stop_score(s, current_pos, mpg))
+
+ """
