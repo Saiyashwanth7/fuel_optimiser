@@ -13,6 +13,18 @@ Flow (one request):
 """
 
 # new-views
+from django.http import JsonResponse
+
+"""
+Add this to route/views.py (or wherever your other views live).
+
+Serves the static frontend HTML at the root URL. Since this is served
+from the same Django app, there's no CORS issue -- the fetch() calls
+in the HTML to /api/ are same-origin.
+"""
+
+from django.shortcuts import render
+
 import logging
 
 from rest_framework import status
@@ -102,7 +114,8 @@ def resolve_location_coords(location: str) -> tuple[float, float] | None:
     return None
 
 
-from django.http import JsonResponse
+def frontend_view(request):
+    return render(request, "index.html")
 
 
 def health_check(request):
