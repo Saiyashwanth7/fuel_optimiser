@@ -10,15 +10,21 @@ The API is deployed and live on Railway:
 
 **Base URL:** `https://fueloptimiser-production.up.railway.app`
 
+This above link has a simple frontend to let users enter the locations for testing, also has a view raw backend button where the actual backend JSON response can be viewed.
+
 ### Try it now
 
-**Chicago to Dallas:** `https://fueloptimiser-production.up.railway.app/api/?start=Chicago,+IL&finish=Dallas,+TX`
+**Chicago to Dallas:**
+`https://fueloptimiser-production.up.railway.app/api/?start=Chicago,+IL&finish=Dallas,+TX`
+_start:_ Chicago,IL _Finish:_ Dallas,TX
 
 **New York to Los Angeles:**
 `https://fueloptimiser-production.up.railway.app/api/?start=New+York,+NY&finish=Los+Angeles,+CA`
+_start:_ New York,NY _Finish:_ Los Angeles,CA
 
 **Short trip under 500 miles (no fuel stop needed):**
 `https://fueloptimiser-production.up.railway.app/api/?start=Chicago,+IL&finish=Indianapolis,+IN`
+_start:_ Chicago,IL _Finish:_ Indianapolis,+IN
 
 ## What it does
 
@@ -68,6 +74,16 @@ This repeats until the remaining distance to the destination fits inside one tan
 
 If a stretch of the route genuinely has no reachable station at all, the API returns a clear error rather than failing silently or giving a wrong answer.
 
+## An experiment that didn't make it to production: `optimizer_v3.py`
+
+While building this, I noticed the greedy algorithm sometimes recommends more stops than feel necessary, since it always grabs the cheapest reachable station even when that station is only marginally cheaper than one further along. There's a real tradeoff here: more stops means more time off the road, which has its own cost that the assessment doesn't ask me to model but that a real trucking company would care about.
+
+So I tried a different approach in `optimizer_v3.py`: instead of greedy selection, use dynamic programming to find the truly globally optimal path, where each potential stop is a node, each reachable pair of nodes is an edge weighted by fuel cost, and a fixed `stop_penalty` (e.g. $2) is added to every edge to discourage taking more stops than needed. This turns stop selection into a shortest-path problem, solved with an O(n²) DP over stations sorted by distance.
+
+This version is **not used in production** (the live API runs `optimizer_v2.py`), for one concrete reason I found while testing it: the penalty leaks into the reported total in a way that breaks the response. The DP's `total_cost_usd` is `real fuel cost + (stop_penalty × number of stops)`, but each individual stop's `leg_cost_usd` in the response only reflects fuel, not the penalty. So if you sum the itemized `leg_cost_usd` values across all stops, you get a smaller number than `total_cost_usd` reports — the two don't reconcile, and nothing in the response explains why. For an assessment that explicitly asks for "total money spent on fuel," returning a number padded with an invented per-stop fee, with no field disclosing that, felt like the wrong tradeoff to ship under time pressure.
+
+The right fix is to track real fuel cost separately from the DP's penalized score (e.g. a parallel `min_fuel_cost[]` array updated alongside the DP's `min_cost[]`, returning that instead) — but that's a non-trivial change, not a one-line patch, so I'm leaving it as a documented experiment rather than rushing it into the live path. If I were to continue working on this, this is the first thing I'd fix, followed by tuning the actual penalty value against real route data to see how much it changes stop counts in practice.
+
 ## A real, honest limitation
 
 The fuel station addresses in the source data are highway exit descriptions, things like "I-44, exit 283", not actual mailing addresses. Geocoding services can't pin those down precisely. So I geocoded every station at the city level, using city and state only.
@@ -86,8 +102,9 @@ route/
   services/
     routing.py                  ORS API wrapper, one call per request
     geocoding.py                 Nominatim fallback for start/finish lookup
-    optimizer.py                  Original nested-loop version
-    optimizer_v2.py                Current version, vectorized + downsampled
+    optimizer.py                  Original nested-loop version (v1)
+    optimizer_v2.py                Current/live version, vectorized + downsampled
+    optimizer_v3.py                 Experimental DP + stop-penalty version, not in production (see above)
   management/commands/
     load_stations.py              One-time command to load and geocode station data
 ```
