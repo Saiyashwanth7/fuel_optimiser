@@ -6,8 +6,14 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR / ".env")
 
 SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "dev-secret")
-DEBUG = True
-ALLOWED_HOSTS = ["*"]
+DEBUG = os.getenv("DEBUG", "False") == "True"
+
+ALLOWED_HOSTS = ["localhost", "127.0.0.1"]
+RAILWAY_PUBLIC_DOMAIN = os.getenv("RAILWAY_PUBLIC_DOMAIN")
+if RAILWAY_PUBLIC_DOMAIN:
+    ALLOWED_HOSTS.append(RAILWAY_PUBLIC_DOMAIN)
+# Railway's health checks hit the container on its internal hostname too
+ALLOWED_HOSTS.append(".railway.app")
 
 # External API Keys
 ORS_API_KEY = os.getenv("ORS_API_KEY", "")
@@ -26,6 +32,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    "whitenoise.middleware.WhiteNoiseMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -54,15 +61,30 @@ TEMPLATES = [
 
 WSGI_APPLICATION = "fuel_route.wsgi.application"
 
-DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.postgresql",
-        "NAME": os.getenv("DATABASE_NAME", os.getenv("POSTGRES_DB", "postgres")),
-        "USER": os.getenv("DATABASE_USER", os.getenv("POSTGRES_USER", "postgres")),
-        "PASSWORD": os.getenv("DATABASE_PASSWORD", os.getenv("POSTGRES_PASSWORD", "")),
-        "HOST": os.getenv("DATABASE_HOST", os.getenv("POSTGRES_HOST", "localhost")),
-        "PORT": os.getenv("DATABASE_PORT", os.getenv("POSTGRES_PORT", 5432)),
+DATABASE_URL = os.getenv("DATABASE_URL")
+import dj_database_url
+
+if DATABASE_URL:
+
+    DATABASES = {"default": dj_database_url.parse(DATABASE_URL, conn_max_age=600)}
+else:
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.postgresql",
+            "NAME": os.getenv("DATABASE_NAME", os.getenv("POSTGRES_DB", "postgres")),
+            "USER": os.getenv("DATABASE_USER", os.getenv("POSTGRES_USER", "postgres")),
+            "PASSWORD": os.getenv(
+                "DATABASE_PASSWORD", os.getenv("POSTGRES_PASSWORD", "")
+            ),
+            "HOST": os.getenv("DATABASE_HOST", os.getenv("POSTGRES_HOST", "localhost")),
+            "PORT": os.getenv("DATABASE_PORT", os.getenv("POSTGRES_PORT", 5432)),
+        }
     }
-}
 
 STATIC_URL = "/static/"
+STATIC_ROOT = BASE_DIR / "staticfiles"
+STORAGES = {
+    "staticfiles": {
+        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+    },
+}
