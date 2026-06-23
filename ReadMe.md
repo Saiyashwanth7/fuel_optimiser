@@ -4,6 +4,22 @@ A backend service that takes a start and finish location in the US and figures o
 
 Built for the Spotter AI Backend Django Engineer assessment.
 
+## Live Demo
+
+The API is deployed and live on Railway:
+
+**Base URL:** `https://fueloptimiser-production.up.railway.app`
+
+### Try it now
+
+**Chicago to Dallas:** `https://fueloptimiser-production.up.railway.app/api/?start=Chicago,+IL&finish=Dallas,+TX`
+
+**New York to Los Angeles:**
+`https://fueloptimiser-production.up.railway.app/api/?start=New+York,+NY&finish=Los+Angeles,+CA`
+
+**Short trip under 500 miles (no fuel stop needed):**
+`https://fueloptimiser-production.up.railway.app/api/?start=Chicago,+IL&finish=Indianapolis,+IN`
+
 ## What it does
 
 You give it two locations, say Chicago, IL and Dallas, TX, and it returns:

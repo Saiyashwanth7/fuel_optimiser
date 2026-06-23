@@ -30,6 +30,11 @@ logger = logging.getLogger(__name__)
 _geocode_cache: dict[str, tuple[float, float]] = {}
 
 
+# Check if the location is in the US or not
+def is_within_usa(lat: float, lon: float) -> bool:
+    return 24.0 <= lat <= 49.5 and -125.0 <= lon <= -66.0
+
+
 def parse_city_state(location: str) -> tuple[str, str] | None:
     """
     Parse "City, State" format.
@@ -172,6 +177,28 @@ class RouteView(APIView):
 
         start_lat, start_lon = start_coords
         finish_lat, finish_lon = finish_coords
+
+        if not is_within_usa(start_lat, start_lon):
+            return Response(
+                {
+                    "error": (
+                        f"Start location '{start}' does not appear to be within the USA. "
+                        "This service only supports routes within the continental United States."
+                    )
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if not is_within_usa(finish_lat, finish_lon):
+            return Response(
+                {
+                    "error": (
+                        f"Finish location '{finish}' does not appear to be within the USA. "
+                        "This service only supports routes within the continental United States."
+                    )
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         # ------------------------------------------------------------------ #
         # 2. Fetch route from ORS (single API call)
