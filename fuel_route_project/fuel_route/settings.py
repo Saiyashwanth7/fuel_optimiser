@@ -9,6 +9,7 @@ SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "dev-secret")
 DEBUG = os.getenv("DEBUG", "False") == "True"
 
 ALLOWED_HOSTS = ["fueloptimiser-production.up.railway.app", "localhost", "127.0.0.1"]
+CSRF_TRUSTED_ORIGINS = ["https://fueloptimiser-production.up.railway.app"]
 
 RAILWAY_PUBLIC_DOMAIN = os.getenv("RAILWAY_PUBLIC_DOMAIN")
 if RAILWAY_PUBLIC_DOMAIN:
