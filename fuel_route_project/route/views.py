@@ -33,7 +33,7 @@ from rest_framework.views import APIView
 
 from .models import FuelStation
 from .services.geocoding import geocode_address
-from .services.optimizer_v2 import filter_stations_near_route, greedy_fuel_optimizer
+from .services.optimizer_v3 import filter_stations_near_route, greedy_fuel_optimizer
 from .services.routing import get_route
 
 logger = logging.getLogger(__name__)
