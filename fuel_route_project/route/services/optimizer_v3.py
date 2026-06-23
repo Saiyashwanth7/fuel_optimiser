@@ -70,6 +70,78 @@ def filter_stations_near_route(stations, polyline, threshold_miles=PROXIMITY_MIL
 # Dynamic Programming Optimizer
 # --------------------------------------------------------------------------- #
 
+import math
+import logging
+import numpy as np
+from django.conf import settings
+
+logger = logging.getLogger(__name__)
+
+TANK_RANGE: float = getattr(settings, "VEHICLE_TANK_RANGE_MILES", 500)
+MPG: float = getattr(settings, "VEHICLE_MPG", 10)
+PROXIMITY_MILES: float = getattr(settings, "STATION_ROUTE_PROXIMITY_MILES", 5)
+STOP_PENALTY: float = getattr(settings, "FUEL_STOP_PENALTY_USD", 2.0)
+
+# --------------------------------------------------------------------------- #
+# Geometry helpers (Vectorized)
+# --------------------------------------------------------------------------- #
+
+
+def haversine_vectorized(slat, slon, poly_lats, poly_lons):
+    R = 3958.8
+    dlat = np.radians(poly_lats - slat)
+    dlon = np.radians(poly_lons - slon)
+    a = (
+        np.sin(dlat / 2) ** 2
+        + np.cos(np.radians(slat))
+        * np.cos(np.radians(poly_lats))
+        * np.sin(dlon / 2) ** 2
+    )
+    return R * 2 * np.arcsin(np.sqrt(np.clip(a, 0, 1)))
+
+
+def filter_stations_near_route(stations, polyline, threshold_miles=PROXIMITY_MILES):
+    n = len(polyline)
+    full_lons = np.array([p[0] for p in polyline])
+    full_lats = np.array([p[1] for p in polyline])
+
+    cum_dist = np.zeros(n)
+    for i in range(1, n):
+        # Basic haversine for cum_dist
+        dlat = np.radians(full_lats[i] - full_lats[i - 1])
+        dlon = np.radians(full_lons[i] - full_lons[i - 1])
+        a = (
+            np.sin(dlat / 2) ** 2
+            + np.cos(np.radians(full_lats[i - 1]))
+            * np.cos(np.radians(full_lats[i]))
+            * np.sin(dlon / 2) ** 2
+        )
+        cum_dist[i] = cum_dist[i - 1] + 3958.8 * 2 * np.arcsin(
+            np.sqrt(np.clip(a, 0, 1))
+        )
+
+    nearby = []
+    for station in stations:
+        dists = haversine_vectorized(station.lat, station.lon, full_lats, full_lons)
+        best_idx = int(np.argmin(dists))
+        if dists[best_idx] <= threshold_miles:
+            nearby.append(
+                {
+                    "opis_id": station.opis_id,
+                    "name": station.name,
+                    "city": station.city,
+                    "state": station.state,
+                    "avg_price": station.avg_price,
+                    "dist_from_start": float(cum_dist[best_idx]),
+                }
+            )
+    return nearby
+
+
+# --------------------------------------------------------------------------- #
+# Dynamic Programming Optimizer
+# --------------------------------------------------------------------------- #
+
 
 def greedy_fuel_optimizer(
     stations_on_route: list[dict],
@@ -130,12 +202,46 @@ def greedy_fuel_optimizer(
     if min_cost[-1] == float("inf"):
         raise ValueError("Route unreachable with given tank range.")
 
-    # 3. Reconstruct path
-    fuel_stops = []
+    # 3. Reconstruct path (indices only, so we can compute leg-by-leg
+    # distances and costs using the SAME nodes list used for the DP)
+    path_indices = []
     curr = parent[-1]
     while curr > 0:
-        fuel_stops.insert(0, nodes[curr])
+        path_indices.insert(0, curr)
         curr = parent[curr]
+
+    # Full path including the implicit start node (index 0) and the
+    # destination node (index n-1), so we can compute each leg's
+    # distance/cost the same way the old optimizer's response shape did.
+    full_path = [0] + path_indices + [n - 1]
+
+    fuel_stops = []
+    for k in range(1, len(full_path)):
+        prev_node = nodes[full_path[k - 1]]
+        this_node = nodes[full_path[k]]
+
+        leg_miles = this_node["dist_from_start"] - prev_node["dist_from_start"]
+        gallons_needed = leg_miles / mpg
+        # Fuel for this leg is bought at the PREVIOUS stop's price
+        # (matches the DP's own cost model: cost_to_j uses nodes[i]['avg_price'])
+        leg_cost_usd = gallons_needed * prev_node["avg_price"]
+
+        # Skip the final destination "stop" -- it isn't a real fuel station,
+        # its cost is already attributed to the previous real stop above.
+        if this_node["name"] == "Destination":
+            if fuel_stops:
+                fuel_stops[-1]["final_leg_miles"] = round(leg_miles, 1)
+                fuel_stops[-1]["final_leg_cost_usd"] = round(leg_cost_usd, 2)
+            break
+
+        fuel_stops.append(
+            {
+                **this_node,
+                "leg_miles": round(leg_miles, 1),
+                "gallons_needed": round(gallons_needed, 2),
+                "leg_cost_usd": round(leg_cost_usd, 2),
+            }
+        )
 
     return {
         "fuel_stops": fuel_stops,
