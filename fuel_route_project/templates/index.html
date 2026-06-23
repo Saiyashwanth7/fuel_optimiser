@@ -153,6 +153,26 @@
         cursor: not-allowed;
       }
 
+      /* ── secondary button (raw response) ── */
+      .btn-row {
+        display: flex;
+        gap: 0.75rem;
+        margin-bottom: 1rem;
+      }
+      .btn-row button {
+        margin-bottom: 0;
+      }
+      .btn-secondary {
+        background: transparent;
+        color: var(--text);
+        border: 1px solid var(--border);
+      }
+      .btn-secondary:hover:not(:disabled) {
+        opacity: 1;
+        border-color: var(--accent);
+        color: var(--accent);
+      }
+
       /* ── spinner ── */
       .spinner {
         width: 16px;
@@ -336,10 +356,20 @@
           <input type="text" id="finish" placeholder="Dallas, TX" />
         </div>
       </div>
-      <button id="btn" onclick="runOptimizer()">
-        <div class="spinner" id="spinner"></div>
-        <span id="btn-text">Find Cheapest Route</span>
-      </button>
+      <div class="btn-row">
+        <button id="btn" onclick="runOptimizer()">
+          <div class="spinner" id="spinner"></div>
+          <span id="btn-text">Find Cheapest Route</span>
+        </button>
+        <button
+          id="raw-btn"
+          class="btn-secondary"
+          onclick="viewRawResponse()"
+          title="Open the raw backend JSON response (includes the route polyline) in a new tab"
+        >
+          View Raw Backend Response
+        </button>
+      </div>
       <div class="error-box" id="error"></div>
     </div>
 
@@ -368,6 +398,29 @@
     <script>
       const API = "";
 
+      function buildApiUrl(start, finish) {
+        return `${API}/api/?start=${encodeURIComponent(start)}&finish=${encodeURIComponent(finish)}`;
+      }
+
+      // Opens the actual backend endpoint in a new tab, using whatever
+      // start/finish the user has typed into the form. This is the raw
+      // DRF response -- JSON if requested by a non-browser client, or the
+      // DRF browsable API page (which includes the full route_geometry
+      // polyline) when opened directly in a browser tab like this.
+      function viewRawResponse() {
+        const start = document.getElementById("start").value.trim();
+        const finish = document.getElementById("finish").value.trim();
+        const errorBox = document.getElementById("error");
+        errorBox.style.display = "none";
+
+        if (!start || !finish) {
+          showError("Please enter both a start and finish location first.");
+          return;
+        }
+
+        window.open(buildApiUrl(start, finish), "_blank");
+      }
+
       async function runOptimizer() {
         const start = document.getElementById("start").value.trim();
         const finish = document.getElementById("finish").value.trim();
@@ -392,7 +445,7 @@
         btnText.textContent = "Optimizing route…";
 
         try {
-          const url = `${API}/api/?start=${encodeURIComponent(start)}&finish=${encodeURIComponent(finish)}`;
+          const url = buildApiUrl(start, finish);
           const res = await fetch(url);
           const data = await res.json();
 
