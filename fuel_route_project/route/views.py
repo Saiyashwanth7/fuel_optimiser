@@ -52,7 +52,7 @@ def resolve_location_coords(location: str) -> tuple[float, float] | None:
       1. In-memory cache (by exact location string)
       2. DB fuel stations (by city, state)
       3. Geocoding API (Nominatim)
-    
+
     Caches results in memory for future requests in this process.
     """
     location_key = location.strip().lower()
@@ -68,25 +68,26 @@ def resolve_location_coords(location: str) -> tuple[float, float] | None:
     parsed = parse_city_state(location)
     if parsed:
         city, state = parsed
-        station = FuelStation.objects.filter(
-            city__iexact=city,
-            state__iexact=state,
-        ).order_by("avg_price").first()
-        
+        station = (
+            FuelStation.objects.filter(
+                city__iexact=city,
+                state__iexact=state,
+            )
+            .order_by("avg_price")
+            .first()
+        )
+
         if station:
             coords = (station.lat, station.lon)
             logger.info(
-                f"Resolved '{location}' from DB station: "
-                f"({coords[0]}, {coords[1]})"
+                f"Resolved '{location}' from DB station: " f"({coords[0]}, {coords[1]})"
             )
 
     # 3. Fall back to geocoding API
     if coords is None:
         coords = geocode_address(location)
         if coords:
-            logger.info(
-                f"Geocoded '{location}' via API: ({coords[0]}, {coords[1]})"
-            )
+            logger.info(f"Geocoded '{location}' via API: ({coords[0]}, {coords[1]})")
 
     # 4. Cache in memory if found
     if coords:
@@ -94,6 +95,13 @@ def resolve_location_coords(location: str) -> tuple[float, float] | None:
         return coords
 
     return None
+
+
+from django.http import JsonResponse
+
+
+def health_check(request):
+    return JsonResponse({"status": "ok"})
 
 
 class RouteView(APIView):
@@ -165,7 +173,7 @@ class RouteView(APIView):
         # ------------------------------------------------------------------ #
         try:
             route = get_route(
-                [start_lon, start_lat],   # ORS expects [lon, lat]
+                [start_lon, start_lat],  # ORS expects [lon, lat]
                 [finish_lon, finish_lat],
             )
         except Exception as exc:
@@ -175,7 +183,7 @@ class RouteView(APIView):
                 status=status.HTTP_502_BAD_GATEWAY,
             )
 
-        polyline = route["geometry"]       # [[lon, lat], ...]
+        polyline = route["geometry"]  # [[lon, lat], ...]
         total_miles = route["distance_miles"]
 
         # ------------------------------------------------------------------ #
