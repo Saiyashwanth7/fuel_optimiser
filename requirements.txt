@@ -1,14 +1,18 @@
+(venv) PS C:\Users\shuch\OneDrive\Desktop\assessment> pip freeze                   
 asgiref==3.11.1
 certifi==2026.5.20
 charset-normalizer==3.4.7
+dj-database-url==2.3.0
 Django==6.0.6
 djangorestframework==3.17.1
 dotenv==0.9.9
 geographiclib==2.1
 geopy==2.4.1
+gunicorn==23.0.0
 idna==3.18
 numpy==2.4.6
 openrouteservice==2.3.3
+packaging==26.2
 pandas==3.0.3
 polyline==2.0.4
 psycopg2-binary==2.9.12
@@ -18,6 +22,7 @@ python-dotenv==1.2.2
 requests==2.34.2
 six==1.17.0
 sqlparse==0.5.5
+typing_extensions==4.15.0
 tzdata==2026.2
 urllib3==2.7.0
-dj-database-url==2.3.0
+whitenoise==6.8.2
