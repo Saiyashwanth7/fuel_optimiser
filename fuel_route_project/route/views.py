@@ -11,8 +11,6 @@ Flow (one request):
   5. Greedy optimizer picks cheapest fuel stops (in-memory, milliseconds)
   6. Return JSON with stops, costs, and GeoJSON geometry
 """
-
-# new-views
 from django.http import JsonResponse
 
 """
@@ -65,10 +63,20 @@ def parse_city_state(location: str) -> tuple[str, str] | None:
 
 def resolve_location_coords(location: str) -> tuple[float, float] | None:
     """
-    Resolve location coordinates with priority:
+    Resolve location coordinates for a user-supplied start/finish location.
+
+    IMPORTANT: this must always use real geocoding (Nominatim), not a
+    shortcut through FuelStation rows. A FuelStation's coordinates point
+    at a specific truck stop (the cheapest one in that city, per the old
+    DB-lookup logic) -- not the city itself. Those coordinates are not
+    guaranteed to sit near a routable road, and OpenRouteService will
+    404 with "Could not find routable point within a radius of 350.0
+    meters" when they don't. City-level geocoding from Nominatim is far
+    more likely to land on or near an actual road.
+
+    Priority:
       1. In-memory cache (by exact location string)
-      2. DB fuel stations (by city, state)
-      3. Geocoding API (Nominatim)
+      2. Geocoding API (Nominatim)
 
     Caches results in memory for future requests in this process.
     """
@@ -79,34 +87,12 @@ def resolve_location_coords(location: str) -> tuple[float, float] | None:
         logger.info(f"Cache hit for '{location}'")
         return _geocode_cache[location_key]
 
-    coords = None
+    # 2. Geocode via Nominatim
+    coords = geocode_address(location)
+    if coords:
+        logger.info(f"Geocoded '{location}' via API: ({coords[0]}, {coords[1]})")
 
-    # 2. Try DB lookup by city, state
-    parsed = parse_city_state(location)
-    if parsed:
-        city, state = parsed
-        station = (
-            FuelStation.objects.filter(
-                city__iexact=city,
-                state__iexact=state,
-            )
-            .order_by("avg_price")
-            .first()
-        )
-
-        if station:
-            coords = (station.lat, station.lon)
-            logger.info(
-                f"Resolved '{location}' from DB station: " f"({coords[0]}, {coords[1]})"
-            )
-
-    # 3. Fall back to geocoding API
-    if coords is None:
-        coords = geocode_address(location)
-        if coords:
-            logger.info(f"Geocoded '{location}' via API: ({coords[0]}, {coords[1]})")
-
-    # 4. Cache in memory if found
+    # 3. Cache in memory if found
     if coords:
         _geocode_cache[location_key] = coords
         return coords

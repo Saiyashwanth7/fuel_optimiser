@@ -18,7 +18,7 @@ ORS_BASE = "https://api.openrouteservice.org/v2/directions/driving-car/geojson"
 
 def get_route(
     start_coords: list[float, float],  # [lon, lat]
-    end_coords: list[float, float],    # [lon, lat]
+    end_coords: list[float, float],  # [lon, lat]
 ) -> dict:
     """
     Fetch a driving route from ORS.
@@ -39,9 +39,7 @@ def get_route(
     """
     api_key = settings.ORS_API_KEY
     if not api_key:
-        raise ValueError(
-            "ORS_API_KEY is not set. Add it to your .env file."
-        )
+        raise ValueError("ORS_API_KEY is not set. Add it to your .env file.")
 
     headers = {
         "Authorization": api_key,
@@ -52,13 +50,28 @@ def get_route(
     logger.info(f"ORS route request: {start_coords} -> {end_coords}")
 
     resp = requests.post(ORS_BASE, json=body, headers=headers, timeout=20)
+
+    if resp.status_code == 404:
+        try:
+            err_body = resp.json()
+            err_message = err_body.get("error", {}).get("message", "")
+        except Exception:
+            err_message = ""
+
+        if "routable point" in err_message.lower():
+            raise ValueError(
+                "One of the locations is too far from a usable road for "
+                "routing. Please try a more specific or central address "
+                "for this location."
+            )
+
     resp.raise_for_status()
 
     data = resp.json()
 
     try:
         feature = data["features"][0]
-        coords = feature["geometry"]["coordinates"]   # list of [lon, lat]
+        coords = feature["geometry"]["coordinates"]  # list of [lon, lat]
         dist_m = feature["properties"]["summary"]["distance"]
     except (KeyError, IndexError) as exc:
         raise ValueError(f"Unexpected ORS response structure: {exc}") from exc
@@ -71,7 +84,7 @@ def get_route(
         "geometry": coords,
         "distance_miles": dist_miles,
     }
-    
+
 
 # I have noticed that the current algorithm is working well, but the fuel stop are higher than expected.
 # so we can use a stop penalty to limit the fuel stops. This can minimize the cost even more, but I need to look into it's edges cases
