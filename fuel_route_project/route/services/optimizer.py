@@ -37,23 +37,27 @@ PROXIMITY_MILES: float = getattr(settings, "STATION_ROUTE_PROXIMITY_MILES", 20)
 # Geometry helpers
 # --------------------------------------------------------------------------- #
 
+
 # We use haversine distance to find the distance between the start lat,lng and finish lat, lng
 # The harvesine distance formula is
 # 2*R*(sine inverse(sqrt(sin(lat2-lat1)**2 + (cos(lat1)*cos(lat2)*(sin(lng2-lng1)**2)))
 def haversine(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     R = 3958.8  # Earth radius in miles
-    
+
     # converting degrees into radians
-    dlat = math.radians(lat2 - lat1) 
+    dlat = math.radians(lat2 - lat1)
     dlon = math.radians(lon2 - lon1)
-    
+
     # the core part of haversine fomrula, the thing we use in the sine inverse part
-    a = (math.sin(dlat / 2) ** 2 + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dlon / 2) ** 2)
+    a = (
+        math.sin(dlat / 2) ** 2
+        + math.cos(math.radians(lat1))
+        * math.cos(math.radians(lat2))
+        * math.sin(dlon / 2) ** 2
+    )
     # according to the haversine formula, a value will be 0≤a≤1, if a gets bigger than 1 due to computation mistake, we round it up to 1
-    # here, R is the radius, the other part is the angle, distance (in miles) = raidus * angle 
+    # here, R is the radius, the other part is the angle, distance (in miles) = raidus * angle
     return R * 2 * math.asin(math.sqrt(min(a, 1.0)))  # clamp for float rounding
-
-
 
 
 # Using this function we are going to filter the stations near the polyine provided by the ORS API.
@@ -67,7 +71,6 @@ def filter_stations_near_route(
     polyline: list[list[float]],  # [[lon, lat], ...]
     threshold_miles: float = PROXIMITY_MILES,
 ) -> list[dict]:
-    
     """
     Return stations within threshold_miles of ANY point on the polyline.
 
@@ -90,7 +93,7 @@ def filter_stations_near_route(
         cum_dist.append(cum_dist[-1] + seg)
 
     nearby = []
-    # Using a nested for loop to derive the distance between a station and each breadcrumb in the polyline. 
+    # Using a nested for loop to derive the distance between a station and each breadcrumb in the polyline.
     # This is the part which is very slow. Need to figure out a faster way to filter out the stations. Maybe, need to take lesser points from polyline. Each case has thousands of polyline points, need to work on this as well. Maybe, we can use numpy for faster calculations by vectorizing each poin the polyline and filtering on it
     for station in stations:
         slat, slon = station.lat, station.lon
@@ -104,16 +107,18 @@ def filter_stations_near_route(
                 best_route_miles = cum_dist[i]
 
         if best_dist <= threshold_miles:
-            nearby.append({
-                "opis_id": station.opis_id,
-                "name": station.name,
-                "city": station.city,
-                "state": station.state,
-                "lat": slat,
-                "lon": slon,
-                "avg_price": station.avg_price,
-                "dist_from_start": best_route_miles,
-            })
+            nearby.append(
+                {
+                    "opis_id": station.opis_id,
+                    "name": station.name,
+                    "city": station.city,
+                    "state": station.state,
+                    "lat": slat,
+                    "lon": slon,
+                    "avg_price": station.avg_price,
+                    "dist_from_start": best_route_miles,
+                }
+            )
 
     logger.info(
         f"Proximity filter: {len(nearby)} stations within {threshold_miles} miles "
@@ -128,7 +133,7 @@ def filter_stations_near_route(
 
 
 # This function in the actual core greedy algorithm. It takes the filtered stations (stations_on_route) as the parameter along with the total_route_miles, and tangk_range, mpg
-def greedy_fuel_optimizer(
+def fuel_optimizer(
     stations_on_route: list[dict],
     total_route_miles: float,
     tank_range: float = TANK_RANGE,
@@ -177,7 +182,7 @@ def greedy_fuel_optimizer(
     while True:
         # remaining from the current point.
         remaining = total_route_miles - current_pos
-        
+
         if remaining <= 0:
             break
 
@@ -186,26 +191,29 @@ def greedy_fuel_optimizer(
             break
 
         # create a list of stations reachable from current position (strictly ahead) (sorted with dist_from_start)
-        
+
         # REACHABLE STATION: A station is said to be reachable if we can drive to it from the current position without running out of fuel
-        
+
         # here, we are going to derive a list of coordinates we can reach using the current fuel.
         # we are using the current truck mileage based on the current fuel and mpg
         reachable = [
-            s for s in stations
+            s
+            for s in stations
             if current_pos < s["dist_from_start"] <= current_pos + tank_range
         ]
 
-        if not reachable: # if there are no coordinates in the DB which matches the required 500 mile range, then we raise a valueError.
+        if (
+            not reachable
+        ):  # if there are no coordinates in the DB which matches the required 500 mile range, then we raise a valueError.
             raise ValueError(
                 f"No fuel station found within {tank_range:.0f} miles of "
                 f"mile marker {current_pos:.1f}. "
                 f"This route segment may pass through a very remote area."
             )
 
-        # Filter to "viable" stations those from the reachable stations. 
+        # Filter to "viable" stations those from the reachable stations.
         # VIABLE STATION: viables are the stations from which we can either reach destination, or reach another station.
-        
+
         viable = []
         for s in reachable:
             dist_after = s["dist_from_start"]
@@ -240,12 +248,14 @@ def greedy_fuel_optimizer(
         cost = gallons * best["avg_price"]
         total_cost += cost
 
-        fuel_stops.append({
-            **best,
-            "leg_miles": round(leg_miles, 1),
-            "gallons_needed": round(gallons, 2),
-            "leg_cost_usd": round(cost, 2),
-        })
+        fuel_stops.append(
+            {
+                **best,
+                "leg_miles": round(leg_miles, 1),
+                "gallons_needed": round(gallons, 2),
+                "leg_cost_usd": round(cost, 2),
+            }
+        )
         # update the current_pos.
         current_pos = best["dist_from_start"]
 

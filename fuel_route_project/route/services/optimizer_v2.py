@@ -186,7 +186,7 @@ def filter_stations_near_route(
 # --------------------------------------------------------------------------- #
 
 
-def greedy_fuel_optimizer(
+def fuel_optimizer(
     stations_on_route: list[dict],
     total_route_miles: float,
     tank_range: float = TANK_RANGE,

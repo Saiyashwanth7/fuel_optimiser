@@ -70,80 +70,8 @@ def filter_stations_near_route(stations, polyline, threshold_miles=PROXIMITY_MIL
 # Dynamic Programming Optimizer
 # --------------------------------------------------------------------------- #
 
-import math
-import logging
-import numpy as np
-from django.conf import settings
 
-logger = logging.getLogger(__name__)
-
-TANK_RANGE: float = getattr(settings, "VEHICLE_TANK_RANGE_MILES", 500)
-MPG: float = getattr(settings, "VEHICLE_MPG", 10)
-PROXIMITY_MILES: float = getattr(settings, "STATION_ROUTE_PROXIMITY_MILES", 5)
-STOP_PENALTY: float = getattr(settings, "FUEL_STOP_PENALTY_USD", 2.0)
-
-# --------------------------------------------------------------------------- #
-# Geometry helpers (Vectorized)
-# --------------------------------------------------------------------------- #
-
-
-def haversine_vectorized(slat, slon, poly_lats, poly_lons):
-    R = 3958.8
-    dlat = np.radians(poly_lats - slat)
-    dlon = np.radians(poly_lons - slon)
-    a = (
-        np.sin(dlat / 2) ** 2
-        + np.cos(np.radians(slat))
-        * np.cos(np.radians(poly_lats))
-        * np.sin(dlon / 2) ** 2
-    )
-    return R * 2 * np.arcsin(np.sqrt(np.clip(a, 0, 1)))
-
-
-def filter_stations_near_route(stations, polyline, threshold_miles=PROXIMITY_MILES):
-    n = len(polyline)
-    full_lons = np.array([p[0] for p in polyline])
-    full_lats = np.array([p[1] for p in polyline])
-
-    cum_dist = np.zeros(n)
-    for i in range(1, n):
-        # Basic haversine for cum_dist
-        dlat = np.radians(full_lats[i] - full_lats[i - 1])
-        dlon = np.radians(full_lons[i] - full_lons[i - 1])
-        a = (
-            np.sin(dlat / 2) ** 2
-            + np.cos(np.radians(full_lats[i - 1]))
-            * np.cos(np.radians(full_lats[i]))
-            * np.sin(dlon / 2) ** 2
-        )
-        cum_dist[i] = cum_dist[i - 1] + 3958.8 * 2 * np.arcsin(
-            np.sqrt(np.clip(a, 0, 1))
-        )
-
-    nearby = []
-    for station in stations:
-        dists = haversine_vectorized(station.lat, station.lon, full_lats, full_lons)
-        best_idx = int(np.argmin(dists))
-        if dists[best_idx] <= threshold_miles:
-            nearby.append(
-                {
-                    "opis_id": station.opis_id,
-                    "name": station.name,
-                    "city": station.city,
-                    "state": station.state,
-                    "avg_price": station.avg_price,
-                    "dist_from_start": float(cum_dist[best_idx]),
-                }
-            )
-    return nearby
-
-
-# --------------------------------------------------------------------------- #
-# Dynamic Programming Optimizer
-# --------------------------------------------------------------------------- #
-
-
-def greedy_fuel_optimizer(
+def fuel_optimizer(
     stations_on_route: list[dict],
     total_route_miles: float,
     tank_range: float = TANK_RANGE,
