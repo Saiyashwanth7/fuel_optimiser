@@ -36,6 +36,14 @@ if EXTRA_ALLOWED_HOSTS:
 ORS_API_KEY = os.getenv("ORS_API_KEY", "")
 GEOCODIO_API_KEY = os.getenv("GEOCODIO_API_KEY", "")
 
+# Station coordinates are city-centre geocodes (not exact street addresses),
+# so a route's actual polyline can sit several miles from a station's stored
+# lat/lon even when that station is genuinely reachable off the highway.
+# 5 miles is too tight for this precision level and silently returns zero
+# stations on real routes -- 20 miles matches the buffer this project's own
+# design docs (see FuelStation model + optimizer.py comments) call for.
+STATION_ROUTE_PROXIMITY_MILES = float(os.getenv("STATION_ROUTE_PROXIMITY_MILES", 20))
+
 INSTALLED_APPS = [
     "django.contrib.admin",
     "django.contrib.auth",
