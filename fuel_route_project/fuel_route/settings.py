@@ -42,7 +42,10 @@ GEOCODIO_API_KEY = os.getenv("GEOCODIO_API_KEY", "")
 # 5 miles is too tight for this precision level and silently returns zero
 # stations on real routes -- 20 miles matches the buffer this project's own
 # design docs (see FuelStation model + optimizer.py comments) call for.
-STATION_ROUTE_PROXIMITY_MILES = float(os.getenv("STATION_ROUTE_PROXIMITY_MILES", 20))
+#STATION_ROUTE_PROXIMITY_MILES = float(os.getenv("STATION_ROUTE_PROXIMITY_MILES", 20))
+
+#testing for the 5 miles threshold:
+STATION_ROUTE_PROXIMITY_MILES = float(os.getenv("STATION_ROUTE_PROXIMITY_MILES", 5))
 
 INSTALLED_APPS = [
     "django.contrib.admin",
