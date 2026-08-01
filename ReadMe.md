@@ -2,28 +2,28 @@
 
 A backend service that takes a start and finish location in the US and figures out the cheapest way to fuel up along the route, given a truck with a 500 mile tank range and 10 miles per gallon fuel efficiency.
 
-Built for the Spotter AI Backend Django Engineer assessment.
+Built for the Spotter Labs Django Backend Engineer assessment.
 
 ## Live Demo
 
 The API is deployed and live on Railway:
 
-**Base URL:** `https://fueloptimiser-production.up.railway.app`
+**Base URL:** `https://fuel-optimiser.onrender.com/`
 
 This above link has a simple frontend to let users enter the locations for testing, also has a view raw backend button where the actual backend JSON response can be viewed.
 
 ### Try it now
 
 **Chicago to Dallas:**
-`https://fueloptimiser-production.up.railway.app/api/?start=Chicago,+IL&finish=Dallas,+TX`
+`https://fuel-optimiser.onrender.com/api/?start=Chicago,+IL&finish=Dallas,+TX`
 _start:_ Chicago,IL _Finish:_ Dallas,TX
 
 **New York to Los Angeles:**
-`https://fueloptimiser-production.up.railway.app/api/?start=New+York,+NY&finish=Los+Angeles,+CA`
+`https://fuel-optimiser.onrender.com/api/?start=New+York,+NY&finish=Los+Angeles,+CA`
 _start:_ New York,NY _Finish:_ Los Angeles,CA
 
 **Short trip under 500 miles (no fuel stop needed):**
-`https://fueloptimiser-production.up.railway.app/api/?start=Chicago,+IL&finish=Indianapolis,+IN`
+`https://fuel-optimiser.onrender.com//api/?start=Chicago,+IL&finish=Indianapolis,+IN`
 _start:_ Chicago,IL _Finish:_ Indianapolis,+IN
 
 ## What it does
